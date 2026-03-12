@@ -1,0 +1,80 @@
+version: "3.8"
+
+services:
+  # =============================================================
+  # Kafka Broker (KRaft mode - NO ZooKeeper needed!)
+  # This saves ~500MB RAM compared to traditional ZK setup
+  # =============================================================
+  kafka:
+    image: apache/kafka:3.7.0
+    container_name: kafka-broker
+    hostname: kafka-broker
+    ports:
+      - "9092:9092"     # External listener (for your Python code)
+      - "9093:9093"     # Controller listener (internal)
+    environment:
+      # KRaft settings (replaces ZooKeeper)
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka-broker:9093
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+
+      # Listener settings
+      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092,CONTROLLER://0.0.0.0:9093
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://localhost:9092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+
+      # Resource-saving settings for Codespaces
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+      KAFKA_NUM_PARTITIONS: 3
+
+      # Memory limits (keeps Kafka lean)
+      KAFKA_HEAP_OPTS: "-Xmx512m -Xms256m"
+
+      # Logging (reduce disk usage)
+      KAFKA_LOG_RETENTION_HOURS: 1
+      KAFKA_LOG_RETENTION_BYTES: 104857600  # 100MB max
+      KAFKA_LOG_SEGMENT_BYTES: 10485760     # 10MB segments
+    volumes:
+      - kafka-data:/var/lib/kafka/data
+    healthcheck:
+      test: /opt/kafka/bin/kafka-metadata.sh --snapshot /var/lib/kafka/data/__cluster_metadata-0/00000000000000000000.log --cluster-id $(cat /var/lib/kafka/data/.cluster_id 2>/dev/null || echo "test") 2>/dev/null || /opt/kafka/bin/kafka-broker-api-versions.sh --bootstrap-server localhost:9092 > /dev/null 2>&1
+      interval: 10s
+      timeout: 10s
+      retries: 10
+      start_period: 30s
+    deploy:
+      resources:
+        limits:
+          memory: 768M
+        reservations:
+          memory: 384M
+
+  # =============================================================
+  # Redpanda Console - Lightweight Kafka UI (~50MB RAM)
+  # Much lighter than Confluent Control Center
+  # =============================================================
+  kafka-ui:
+    image: redpandadata/console:v2.4.5
+    container_name: kafka-ui
+    ports:
+      - "8080:8080"
+    environment:
+      KAFKA_BROKERS: kafka-broker:9092
+    depends_on:
+      kafka:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          memory: 128M
+        reservations:
+          memory: 64M
+
+volumes:
+  kafka-data:
+    driver: local
