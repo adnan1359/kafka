@@ -1,0 +1,11 @@
+# Kafka Python client (C-based, fast & lightweight)
+confluent-kafka==2.3.0
+
+# For Avro/schema lesson
+fastavro==1.9.4
+
+# For stream processing lesson
+faust-streaming==0.11.0
+
+# Utilities
+rich==13.7.0       # Pretty terminal output
